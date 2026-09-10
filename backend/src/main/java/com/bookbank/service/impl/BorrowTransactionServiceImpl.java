@@ -1,0 +1,334 @@
+package com.bookbank.service.impl;
+
+import com.bookbank.dto.response.BorrowTransactionResponse;
+import com.bookbank.entity.Book;
+import com.bookbank.entity.BookCopy;
+import com.bookbank.entity.BookCopy.CopyStatus;
+import com.bookbank.entity.BorrowTransaction;
+import com.bookbank.entity.BorrowTransaction.BorrowStatus;
+import com.bookbank.entity.User;
+import com.bookbank.exception.BookNotAvailableException;
+import com.bookbank.exception.BorrowLimitExceededException;
+import com.bookbank.exception.InvalidRequestException;
+import com.bookbank.exception.ResourceNotFoundException;
+import com.bookbank.mapper.BorrowTransactionMapper;
+import com.bookbank.repository.BookCopyRepository;
+import com.bookbank.repository.BookRepository;
+import com.bookbank.repository.BorrowTransactionRepository;
+import com.bookbank.service.BorrowTransactionService;
+import com.bookbank.service.NotificationService;
+import com.bookbank.service.ReservationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+/**
+ * Core borrowing workflow:
+ *   Student requests -> Librarian/Admin approves -> Book issued -> Student returns
+ *
+ * Availability & fines:
+ *  - A REQUEST does not lock a copy; a copy is only reserved for the student
+ *    when the request is APPROVED (this is when we pick a specific AVAILABLE copy).
+ *  - Fines accrue at SettingsService.getFinePerDay() for every day past the due date.
+ */
+@Service
+@RequiredArgsConstructor
+public class BorrowTransactionServiceImpl implements BorrowTransactionService {
+
+    private final BorrowTransactionRepository borrowTransactionRepository;
+    private final BookRepository bookRepository;
+    private final BookCopyRepository bookCopyRepository;
+    private final BorrowTransactionMapper borrowTransactionMapper;
+    private final SettingsService settingsService;
+    private final NotificationService notificationService;
+    private final ReservationService reservationService;
+
+    private static final List<BorrowStatus> ACTIVE_STATUSES =
+            List.of(BorrowStatus.REQUESTED, BorrowStatus.APPROVED, BorrowStatus.ISSUED, BorrowStatus.OVERDUE);
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse requestBorrow(User student, Long bookId) {
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new ResourceNotFoundException("Book not found with id: " + bookId));
+
+        if (Boolean.TRUE.equals(book.getIsDeleted())) {
+            throw new ResourceNotFoundException("Book not found with id: " + bookId);
+        }
+
+        // Eligibility checks
+        checkStudentEligibility(student);
+
+        long activeCount = borrowTransactionRepository.countByUserAndStatusIn(student, ACTIVE_STATUSES);
+        int maxAllowed = settingsService.getMaxBooksPerStudent();
+        if (activeCount >= maxAllowed) {
+            throw new BorrowLimitExceededException(
+                    "You have reached the maximum number of borrowed/requested books (" + maxAllowed + ")");
+        }
+
+        if (book.getAvailableCopies() == null || book.getAvailableCopies() <= 0) {
+            throw new BookNotAvailableException(
+                    "'" + book.getTitle() + "' has no available copies right now. You can reserve it instead.");
+        }
+
+        // We don't lock a specific copy yet - that happens at approval time.
+        // We create a placeholder transaction against any available copy so the
+        // record exists; the librarian confirms the copy at approval.
+        BookCopy anyAvailableCopy = bookCopyRepository.findFirstByBookAndStatus(book, CopyStatus.AVAILABLE)
+                .orElseThrow(() -> new BookNotAvailableException("No available copy found for this book"));
+
+        BorrowTransaction transaction = BorrowTransaction.builder()
+                .user(student)
+                .bookCopy(anyAvailableCopy)
+                .requestDate(LocalDateTime.now())
+                .status(BorrowStatus.REQUESTED)
+                .fineAmount(BigDecimal.ZERO)
+                .finePaid(false)
+                .build();
+
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+
+        // Auto-approve if all conditions are met
+        try {
+            return autoApprovePendingRequest(saved.getId());
+        } catch (Exception e) {
+            // If auto-approval fails, keep as REQUESTED for manual review
+            return borrowTransactionMapper.toResponse(saved);
+        }
+    }
+
+    /**
+     * Checks if student is eligible to borrow based on fines, overdue books, and other rules.
+     */
+    private void checkStudentEligibility(User student) {
+        // Check for unpaid fines
+        BigDecimal unpaidFines = borrowTransactionRepository.sumUnpaidFines(student);
+        if (unpaidFines != null && unpaidFines.compareTo(BigDecimal.ZERO) > 0) {
+            throw new BorrowLimitExceededException(
+                    "You have unpaid fines of ₹" + unpaidFines + ". Please clear them before borrowing.");
+        }
+
+        // Check for overdue books
+        long overdueCount = borrowTransactionRepository.countByUserAndStatusIn(
+                student, List.of(BorrowStatus.OVERDUE));
+        if (overdueCount > 0) {
+            throw new BorrowLimitExceededException(
+                    "You have " + overdueCount + " overdue book(s). Please return them before borrowing.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse approve(Long transactionId) {
+        BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        if (transaction.getStatus() != BorrowStatus.REQUESTED) {
+            throw new InvalidRequestException("Only REQUESTED transactions can be approved");
+        }
+
+        // Check student eligibility before manual approval
+        checkStudentEligibility(transaction.getUser());
+
+        BookCopy copy = transaction.getBookCopy();
+        if (copy.getStatus() != CopyStatus.AVAILABLE) {
+            // The originally linked copy got issued elsewhere in the meantime; find another.
+            copy = bookCopyRepository.findFirstByBookAndStatus(copy.getBook(), CopyStatus.AVAILABLE)
+                    .orElseThrow(() -> new BookNotAvailableException("No available copy left to issue for this book"));
+            transaction.setBookCopy(copy);
+        }
+
+        // Mark the copy ISSUED and decrement the book's available count.
+        copy.setStatus(CopyStatus.ISSUED);
+        bookCopyRepository.save(copy);
+
+        Book book = copy.getBook();
+        book.setAvailableCopies(Math.max(0, book.getAvailableCopies() - 1));
+        bookRepository.save(book);
+
+        transaction.setStatus(BorrowStatus.ISSUED);
+        transaction.setIssueDate(LocalDateTime.now());
+        transaction.setDueDate(LocalDate.now().plusDays(settingsService.getBorrowPeriodDays()));
+
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+        notificationService.notify(transaction.getUser(),
+                "Your request for '" + book.getTitle() + "' was approved. Due date: " + transaction.getDueDate());
+
+        return borrowTransactionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse reject(Long transactionId) {
+        BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        if (transaction.getStatus() != BorrowStatus.REQUESTED) {
+            throw new InvalidRequestException("Only REQUESTED transactions can be rejected");
+        }
+
+        transaction.setStatus(BorrowStatus.REJECTED);
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+
+        notificationService.notify(transaction.getUser(),
+                "Your request for '" + transaction.getBookCopy().getBook().getTitle() + "' was rejected.");
+
+        return borrowTransactionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse returnBook(Long transactionId) {
+        BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        if (transaction.getStatus() != BorrowStatus.ISSUED && transaction.getStatus() != BorrowStatus.OVERDUE) {
+            throw new InvalidRequestException("Only ISSUED or OVERDUE transactions can be returned");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        transaction.setReturnDate(now);
+
+        // Fine calculation: overdue days x configured fine-per-day
+        if (transaction.getDueDate() != null && now.toLocalDate().isAfter(transaction.getDueDate())) {
+            long overdueDays = ChronoUnit.DAYS.between(transaction.getDueDate(), now.toLocalDate());
+            BigDecimal fine = settingsService.getFinePerDay().multiply(BigDecimal.valueOf(overdueDays));
+            transaction.setFineAmount(fine);
+        }
+
+        transaction.setStatus(BorrowStatus.RETURNED);
+
+        BookCopy copy = transaction.getBookCopy();
+        Book book = copy.getBook();
+
+        // If there's an active reservation queue for this book, the copy goes to RESERVED
+        // (held for the next person) instead of straight back to AVAILABLE.
+        boolean hasQueue = reservationService.hasActiveQueue(book.getId());
+        copy.setStatus(hasQueue ? CopyStatus.RESERVED : CopyStatus.AVAILABLE);
+        bookCopyRepository.save(copy);
+
+        if (!hasQueue) {
+            book.setAvailableCopies(book.getAvailableCopies() + 1);
+            bookRepository.save(book);
+        }
+
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+
+        if (hasQueue) {
+            reservationService.notifyNextInQueue(book.getId());
+        }
+
+        return borrowTransactionMapper.toResponse(saved);
+    }
+
+    @Override
+    public List<BorrowTransactionResponse> getAll() {
+        return borrowTransactionRepository.findAllWithDetails().stream().map(borrowTransactionMapper::toResponse).toList();
+    }
+
+    @Override
+    public List<BorrowTransactionResponse> getPending() {
+        return borrowTransactionRepository.findByStatusWithDetails(BorrowStatus.REQUESTED).stream()
+                .map(borrowTransactionMapper::toResponse).toList();
+    }
+
+    @Override
+    public List<BorrowTransactionResponse> getMyHistory(User user) {
+        return borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(user).stream()
+                .map(borrowTransactionMapper::toResponse).toList();
+    }
+
+    @Override
+    public List<BorrowTransactionResponse> getMyCurrentlyBorrowed(User user) {
+        return borrowTransactionRepository
+                .findByUserAndStatusInWithDetails(user, List.of(BorrowStatus.ISSUED, BorrowStatus.OVERDUE)).stream()
+                .map(borrowTransactionMapper::toResponse).toList();
+    }
+
+    @Override
+    public List<BorrowTransactionResponse> getOverdue() {
+        refreshOverdueStatuses();
+        return borrowTransactionRepository.findOverdueWithDetails(LocalDate.now()).stream()
+                .map(borrowTransactionMapper::toResponse).toList();
+    }
+
+    @Override
+    @Transactional
+    public void refreshOverdueStatuses() {
+        List<BorrowTransaction> overdue = borrowTransactionRepository.findOverdue(LocalDate.now());
+        for (BorrowTransaction t : overdue) {
+            if (t.getStatus() == BorrowStatus.ISSUED) {
+                t.setStatus(BorrowStatus.OVERDUE);
+            }
+        }
+        borrowTransactionRepository.saveAll(overdue);
+    }
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse autoApprovePendingRequest(Long transactionId) {
+        BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        if (transaction.getStatus() != BorrowStatus.REQUESTED) {
+            throw new InvalidRequestException("Only REQUESTED transactions can be auto-approved");
+        }
+
+        // Check all eligibility conditions
+        User student = transaction.getUser();
+
+        // 1. Student has no unpaid fines
+        BigDecimal unpaidFines = borrowTransactionRepository.sumUnpaidFines(student);
+        if (unpaidFines != null && unpaidFines.compareTo(BigDecimal.ZERO) > 0) {
+            throw new InvalidRequestException("Student has unpaid fines. Cannot auto-approve.");
+        }
+
+        // 2. Student has no overdue books
+        long overdueCount = borrowTransactionRepository.countByUserAndStatusIn(
+                student, List.of(BorrowStatus.OVERDUE));
+        if (overdueCount > 0) {
+            throw new InvalidRequestException("Student has overdue books. Cannot auto-approve.");
+        }
+
+        // 3. Student has not reached borrowing limit
+        long activeCount = borrowTransactionRepository.countByUserAndStatusIn(student, ACTIVE_STATUSES);
+        int maxAllowed = settingsService.getMaxBooksPerStudent();
+        if (activeCount >= maxAllowed) {
+            throw new InvalidRequestException("Student has reached borrowing limit. Cannot auto-approve.");
+        }
+
+        // 4. Book copy is still available
+        BookCopy copy = transaction.getBookCopy();
+        Book book = copy.getBook();
+        if (copy.getStatus() != CopyStatus.AVAILABLE || book.getAvailableCopies() == null || book.getAvailableCopies() <= 0) {
+            // Try to find another available copy
+            copy = bookCopyRepository.findFirstByBookAndStatus(book, CopyStatus.AVAILABLE)
+                    .orElseThrow(() -> new InvalidRequestException("No available copy left. Cannot auto-approve."));
+            transaction.setBookCopy(copy);
+        }
+
+        // All conditions met - approve
+        copy.setStatus(CopyStatus.ISSUED);
+        bookCopyRepository.save(copy);
+
+        book.setAvailableCopies(Math.max(0, book.getAvailableCopies() - 1));
+        bookRepository.save(book);
+
+        transaction.setStatus(BorrowStatus.ISSUED);
+        transaction.setIssueDate(LocalDateTime.now());
+        transaction.setDueDate(LocalDate.now().plusDays(settingsService.getBorrowPeriodDays()));
+
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+        notificationService.notify(student,
+                "Your request for '" + book.getTitle() + "' was auto-approved. Due date: " + transaction.getDueDate());
+
+        return borrowTransactionMapper.toResponse(saved);
+    }
+
+    private BorrowTransaction getTransactionOrThrow(Long id) {
+        return borrowTransactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Borrow transaction not found with id: " + id));
+    }
+}

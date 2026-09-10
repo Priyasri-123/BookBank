@@ -1,0 +1,28 @@
+package com.bookbank.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Data
+@Builder
+@AllArgsConstructor
+public class BorrowTransactionResponse {
+    private Long id;
+    private Long userId;
+    private String userName;
+    private Long bookCopyId;
+    private String copyCode;
+    private String bookTitle;
+    private LocalDateTime requestDate;
+    private LocalDateTime issueDate;
+    private LocalDate dueDate;
+    private LocalDateTime returnDate;
+    private String status;
+    private BigDecimal fineAmount;
+    private Boolean finePaid;
+}
