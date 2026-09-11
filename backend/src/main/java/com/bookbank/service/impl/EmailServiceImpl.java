@@ -1,13 +1,15 @@
 package com.bookbank.service.impl;
 
+import com.bookbank.exception.EmailSendException;
 import com.bookbank.service.EmailService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,21 +19,30 @@ public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
 
+    @Value("${spring.mail.username:}")
+    private String fromEmail;
+
     @Override
-    @Async
     public void sendPasswordResetOtp(String toEmail, String otp, int validityMinutes) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
+            if (fromEmail != null && !fromEmail.isBlank()) {
+                helper.setFrom(fromEmail);
+            }
             helper.setTo(toEmail);
             helper.setSubject("Book Bank - Password Reset OTP");
             helper.setText(buildOtpEmail(otp, validityMinutes), true);
 
             mailSender.send(message);
-            log.info("Password reset OTP sent to: {}", toEmail);
+            log.info("Password reset OTP email sent to: {}", toEmail);
         } catch (MessagingException e) {
-            log.error("Failed to send password reset OTP to {}: {}", toEmail, e.getMessage());
+            log.error("Failed to send password reset OTP email to {}: {}", toEmail, e.getMessage());
+            throw new EmailSendException("Failed to send OTP email. Verify your SMTP configuration (MAIL_USERNAME and MAIL_PASSWORD environment variables must be set with a valid Gmail App Password).");
+        } catch (MailException e) {
+            log.error("Failed to send password reset OTP email to {}: {}", toEmail, e.getMessage());
+            throw new EmailSendException("Failed to send OTP email. Verify your SMTP configuration (MAIL_USERNAME and MAIL_PASSWORD environment variables must be set with a valid Gmail App Password).");
         }
     }
 

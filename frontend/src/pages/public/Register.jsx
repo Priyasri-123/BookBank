@@ -30,8 +30,13 @@ export default function Register() {
   return (
     <div className="auth-wrapper">
       <div className="auth-card" style={{ maxWidth: 480 }}>
-        <h1>Create your account</h1>
-        <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>Register as a student to start borrowing books</p>
+        <div className="auth-header">
+          <div className="auth-logo">
+            <i>📝</i>
+          </div>
+          <h1>Create your account</h1>
+          <p className="auth-subtitle">Register as a student to start borrowing books</p>
+        </div>
         <Alert message={error} />
         <form onSubmit={handleSubmit}>
           <div className="grid grid-2">

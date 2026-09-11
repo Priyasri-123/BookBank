@@ -280,6 +280,20 @@ th { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transfo
 .auth-switch { text-align: center; margin-top: 16px; font-size: 0.9rem; color: var(--text-muted); }
 .auth-switch a { color: var(--primary); font-weight: 600; }
 
+.auth-header { text-align: center; margin-bottom: 28px; }
+.auth-header h1 { margin: 0; font-size: 1.5rem; color: var(--primary-dark); }
+.auth-header .auth-subtitle { color: var(--text-muted); margin-top: 6px; font-size: 0.9rem; }
+.auth-brand { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; }
+.auth-brand .brand-icon { font-size: 1.6rem; }
+.auth-brand .brand-text { font-size: 1.15rem; font-weight: 700; color: var(--primary-dark); letter-spacing: 0.3px; }
+
+.auth-logo { width: 48px; height: 48px; margin: 0 auto 12px; background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem; }
+.auth-logo i { font-size: 1.4rem; }
+
+.auth-steps { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
+.auth-step { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+.auth-step.active { background: var(--primary); }
+
 .alert {
   padding: 10px 14px;
   border-radius: 8px;

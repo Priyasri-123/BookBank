@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/authApi';
 import { getErrorMessage } from '../../api/axios';
 import Alert from '../../components/common/Alert';
+import Spinner from '../../components/common/Spinner';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -13,13 +14,17 @@ export default function ForgotPassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
       await authApi.forgotPassword({ email });
-      setSuccess('If the email exists, a password reset OTP has been sent. Check your inbox.');
+      setSuccess('A password reset OTP has been sent to your email.');
       setTimeout(() => navigate('/verify-otp', { state: { email } }), 2000);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -28,39 +33,55 @@ export default function ForgotPassword() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="auth-wrapper">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
-    <div className="auth-container">
-      <div className="auth-card">
+    <div className="auth-wrapper">
+      <div className="auth-card" style={{ maxWidth: '420px' }}>
         <div className="auth-header">
-          <h1>Forgot Password</h1>
-          <p>Enter your registered email to receive a reset OTP</p>
+          <div className="auth-logo">
+            <i>🔑</i>
+          </div>
+          <h1>Forgot Password?</h1>
+          <p className="auth-subtitle">Enter your registered email address and we'll send you a 6-digit OTP to reset your password.</p>
         </div>
 
         <Alert message={error} />
         <Alert type="success" message={success} />
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              disabled={loading}
-            />
-          </div>
+        {!success && (
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="email">Email Address</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  disabled={loading}
+                  autoComplete="email"
+                />
+                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '1.1rem' }}>✉️</span>
+              </div>
+            </div>
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Sending...' : 'Send Reset OTP'}
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+              {loading ? 'Sending...' : 'Send Reset OTP'}
+            </button>
+          </form>
+        )}
 
-        <div className="auth-footer">
-          <p>Remember your password? <Link to="/login">Login</Link></p>
-          <p>Don't have an account? <Link to="/register">Register</Link></p>
+        <div className="auth-switch">
+          <Link to="/login">← Back to Login</Link>
         </div>
       </div>
     </div>

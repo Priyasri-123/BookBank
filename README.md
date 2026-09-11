@@ -133,6 +133,16 @@ export DB_PASSWORD=your_mysql_password
 export JWT_SECRET=$(openssl rand -base64 32)
 ```
 
+**Gmail SMTP (for Forgot Password OTP emails):** The app defaults to Gmail SMTP.
+Set these environment variables with your Gmail App Password:
+
+```bash
+# 1. Enable 2-Step Verification on your Google account
+# 2. Generate an App Password at https://myaccount.google.com/apppasswords
+export MAIL_USERNAME=your_email@gmail.com
+export MAIL_PASSWORD=your_gmail_app_password
+```
+
 Then run:
 
 ```bash
@@ -207,11 +217,10 @@ Full documentation lives in Swagger UI once the backend is running.
 | `403 Forbidden` | Logged in with the wrong role | Only Admin/Librarian can manage books, etc. |
 | CORS error in browser console | Frontend origin not allowed | Confirm frontend runs on `localhost` and matches `CorsConfig` |
 | `Table doesn't exist` | First run and `ddl-auto` misconfigured | Ensure `spring.jpa.hibernate.ddl-auto=update` |
+| `503 Service Unavailable` on Forgot Password | SMTP credentials not configured or App Password invalid | Set `MAIL_USERNAME` and `MAIL_PASSWORD` env vars with a Gmail App Password; verify 2-Step Verification is on |
 
 ## 11. Future Improvements
 
-- Email notifications (SMTP integration) alongside in-app notifications
-- Audit logging for admin actions
 - Book cover image upload (currently uses an image URL field)
 - Fine payment integration
 - Refresh tokens for longer sessions

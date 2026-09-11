@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { authApi } from '../../api/authApi';
 import { getErrorMessage } from '../../api/axios';
 import Alert from '../../components/common/Alert';
+import Spinner from '../../components/common/Spinner';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -24,7 +25,10 @@ export default function ResetPassword() {
     if (location.state?.otp) {
       setOtp(location.state.otp);
     }
-  }, [location]);
+    if (!location.state?.email || !location.state?.otp) {
+      navigate('/forgot-password');
+    }
+  }, [location, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,16 +57,18 @@ export default function ResetPassword() {
     }
   };
 
-  const renderPasswordField = (label, value, onChange, show, onToggleShow, placeholder) => (
-    <div className="form-group password-field">
-      <label>{label}</label>
+  const renderPasswordField = (label, value, onChange, show, onToggleShow, placeholder, fieldId) => (
+    <div className="form-group">
+      <label htmlFor={fieldId}>{label}</label>
       <div className="password-input-wrapper">
         <input
+          id={fieldId}
           type={show ? 'text' : 'password'}
           value={value}
           onChange={onChange}
           placeholder={placeholder}
           disabled={loading}
+          autoComplete="new-password"
         />
         <button
           type="button"
@@ -77,43 +83,58 @@ export default function ResetPassword() {
     </div>
   );
 
+  if (!email || !otp) {
+    return (
+      <div className="auth-wrapper">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
-    <div className="auth-container">
-      <div className="auth-card">
+    <div className="auth-wrapper">
+      <div className="auth-card" style={{ maxWidth: '420px' }}>
         <div className="auth-header">
-          <h1>Reset Password</h1>
-          <p>Create a new password for your account</p>
+          <div className="auth-logo">
+            <i>🔒</i>
+          </div>
+          <h1>Create New Password</h1>
+          <p className="auth-subtitle">Enter and confirm your new password below. Your new password must be at least 8 characters.</p>
         </div>
 
         <Alert message={error} />
         <Alert type="success" message={success} />
 
-        <form onSubmit={handleSubmit}>
-          {renderPasswordField(
-            'New Password',
-            newPassword,
-            (e) => setNewPassword(e.target.value),
-            showPassword,
-            () => setShowPassword(!showPassword),
-            'Enter new password (min 8 chars)'
-          )}
+        {!success && (
+          <form onSubmit={handleSubmit}>
+            {renderPasswordField(
+              'New Password',
+              newPassword,
+              (e) => setNewPassword(e.target.value),
+              showPassword,
+              () => setShowPassword(!showPassword),
+              'Enter new password (min 8 chars)',
+              'newPassword'
+            )}
 
-          {renderPasswordField(
-            'Confirm New Password',
-            confirmPassword,
-            (e) => setConfirmPassword(e.target.value),
-            showConfirmPassword,
-            () => setShowConfirmPassword(!showConfirmPassword),
-            'Confirm new password'
-          )}
+            {renderPasswordField(
+              'Confirm New Password',
+              confirmPassword,
+              (e) => setConfirmPassword(e.target.value),
+              showConfirmPassword,
+              () => setShowConfirmPassword(!showConfirmPassword),
+              'Confirm new password',
+              'confirmPassword'
+            )}
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Resetting...' : 'Reset Password'}
-          </button>
-        </form>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+              {loading ? 'Resetting...' : 'Reset Password'}
+            </button>
+          </form>
+        )}
 
-        <div className="auth-footer">
-          <p><Link to="/login">Back to login</Link></p>
+        <div className="auth-switch">
+          <Link to="/login">← Back to Login</Link>
         </div>
       </div>
     </div>

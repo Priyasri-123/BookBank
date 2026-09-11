@@ -26,20 +26,29 @@ export default function Login() {
 
   return (
     <div className="auth-wrapper">
-      <div className="auth-card">
-        <h1>Welcome back</h1>
-        <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>Log in to your Book Bank account</p>
+      <div className="auth-card" style={{ maxWidth: '420px' }}>
+        <div className="auth-header">
+          <div className="auth-logo">
+            <i>📚</i>
+          </div>
+          <h1>Welcome back</h1>
+          <p className="auth-subtitle">Log in to your Book Bank account</p>
+        </div>
         <Alert message={error} />
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="you@example.com"
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '1.1rem' }}>✉️</span>
+            </div>
           </div>
           <div className="form-group password-field">
             <label>Password</label>
@@ -50,6 +59,7 @@ export default function Login() {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="••••••••"
+                autoComplete="current-password"
               />
               <button
                 type="button"
