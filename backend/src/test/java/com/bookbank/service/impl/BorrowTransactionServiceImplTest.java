@@ -206,7 +206,7 @@ class BorrowTransactionServiceImplTest {
         when(borrowTransactionRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        borrowTransactionService.returnBook(50L);
+        borrowTransactionService.returnBook(student, 50L);
 
         assertThat(transaction.getStatus())
                 .isEqualTo(BorrowStatus.RETURNED);
@@ -240,7 +240,7 @@ class BorrowTransactionServiceImplTest {
         when(borrowTransactionRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        borrowTransactionService.returnBook(51L);
+        borrowTransactionService.returnBook(student, 51L);
 
         assertThat(copy.getStatus())
                 .isEqualTo(CopyStatus.RESERVED);

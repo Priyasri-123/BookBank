@@ -9,12 +9,20 @@ public interface BorrowTransactionService {
     BorrowTransactionResponse requestBorrow(User student, Long bookId);
     BorrowTransactionResponse approve(Long transactionId);
     BorrowTransactionResponse reject(Long transactionId);
-    BorrowTransactionResponse returnBook(Long transactionId);
+    BorrowTransactionResponse returnBook(User user, Long transactionId);
     List<BorrowTransactionResponse> getAll();
     List<BorrowTransactionResponse> getPending();
     List<BorrowTransactionResponse> getMyHistory(User user);
     List<BorrowTransactionResponse> getMyCurrentlyBorrowed(User user);
+    List<BorrowTransactionResponse> getMyFines(User user);
+
+    List<BorrowTransactionResponse> getMyUnpaidFines(User user);
+
+    java.math.BigDecimal getUnpaidFineTotal();
+
+    java.math.BigDecimal getUnpaidFineTotal(User user);
     List<BorrowTransactionResponse> getOverdue();
     void refreshOverdueStatuses(); // scheduled job hook
     BorrowTransactionResponse autoApprovePendingRequest(Long transactionId);
+    BorrowTransactionResponse payFine(User student, Long transactionId, String txnId);
 }

@@ -4,6 +4,7 @@ import { categoryApi, authorApi, publisherApi } from '../../api/lookupApi';
 import { getErrorMessage } from '../../api/axios';
 import Spinner from '../../components/common/Spinner';
 import Alert from '../../components/common/Alert';
+import Toast from '../../components/common/Toast';
 import Pagination from '../../components/common/Pagination';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -25,11 +26,13 @@ export default function BookManagement() {
   const [publishers, setPublishers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const loadBooks = async (p = 0) => {
     setLoading(true);
@@ -57,7 +60,6 @@ export default function BookManagement() {
     setEditingId(null);
     setShowForm(true);
     setError('');
-    setSuccess('');
   };
 
   const openEdit = (book) => {
@@ -70,7 +72,6 @@ export default function BookManagement() {
     setEditingId(book.id);
     setShowForm(true);
     setError('');
-    setSuccess('');
   };
 
   const handleSubmit = async (e) => {
@@ -88,33 +89,37 @@ export default function BookManagement() {
       };
       if (editingId) {
         await bookApi.update(editingId, payload);
-        setSuccess('Book updated successfully.');
+        setToast({ type: 'success', message: 'Book updated successfully.' });
       } else {
         await bookApi.create(payload);
-        setSuccess('Book added successfully. Add copies from the Book Copies page.');
+        setToast({ type: 'success', message: 'Book added successfully. Add copies from the Book Copies page.' });
       }
       setShowForm(false);
       loadBooks(page);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setToast({ type: 'error', message: getErrorMessage(err) });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this book? This is a soft delete - borrowing history is preserved.')) return;
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
     try {
-      await bookApi.delete(id);
+      await bookApi.delete(deleteTarget.id);
+      setDeleteTarget(null);
+      setToast({ type: 'success', message: 'Book deleted successfully.' });
       loadBooks(page);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setToast({ type: 'error', message: getErrorMessage(err) });
+    } finally {
+      setDeleting(false);
     }
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title">Book Management</h1>
           <p className="page-subtitle">Add, edit, and manage the book catalog.</p>
@@ -123,7 +128,12 @@ export default function BookManagement() {
       </div>
 
       <Alert type="error" message={error} />
-      <Alert type="success" message={success} />
+
+      <Toast
+        type={toast?.type}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
 
       {showForm && (
         <div className="card" style={{ marginBottom: 20 }}>
@@ -193,7 +203,12 @@ export default function BookManagement() {
       )}
 
       <div className="card">
-        {loading ? <Spinner /> : (
+        {loading ? <Spinner /> : books.length === 0 ? (
+          <div className="empty-state">
+            <p>No books found.</p>
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={openCreate}>Add Your First Book</button>
+          </div>
+        ) : (
           <>
             <table>
               <thead>
@@ -209,7 +224,7 @@ export default function BookManagement() {
                     <td>
                       <button className="btn btn-outline btn-sm" onClick={() => openEdit(b)}>Edit</button>
                       {isAdmin && (
-                        <button className="btn btn-danger btn-sm" style={{ marginLeft: 6 }} onClick={() => handleDelete(b.id)}>Delete</button>
+                        <button className="btn btn-danger btn-sm" style={{ marginLeft: 6 }} onClick={() => setDeleteTarget(b)}>Delete</button>
                       )}
                     </td>
                   </tr>
@@ -220,6 +235,29 @@ export default function BookManagement() {
           </>
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Delete Book</h2>
+              <button className="modal-close" onClick={() => setDeleteTarget(null)} aria-label="Close">✕</button>
+            </div>
+            <p style={{ margin: '12px 0' }}>
+              Are you sure you want to delete <strong>{deleteTarget.title}</strong>?
+            </p>
+            <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+              This is a soft delete — borrowing history is preserved.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleting}>
+                {deleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

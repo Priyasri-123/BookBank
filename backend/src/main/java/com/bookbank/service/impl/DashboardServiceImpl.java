@@ -14,9 +14,9 @@ import com.bookbank.repository.*;
 import com.bookbank.service.DashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -30,6 +30,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final ReservationRepository reservationRepository;
     private final BorrowTransactionMapper borrowTransactionMapper;
     private final ReservationMapper reservationMapper;
+    private final SettingsService settingsService;
 
     @Override
     public AdminDashboardResponse getAdminDashboard() {
@@ -48,17 +49,17 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public LibrarianDashboardResponse getLibrarianDashboard() {
-        LocalDate today = LocalDate.now();
         return LibrarianDashboardResponse.builder()
                 .pendingRequests(borrowTransactionRepository.countByStatus(BorrowStatus.REQUESTED))
-                .issuedToday(borrowTransactionRepository.countIssuedToday(today))
-                .returnedToday(borrowTransactionRepository.countReturnedToday(today))
+                .issuedToday(borrowTransactionRepository.countIssuedToday(java.time.LocalDate.now()))
+                .returnedToday(borrowTransactionRepository.countReturnedToday(java.time.LocalDate.now()))
                 .overdueBooks(borrowTransactionRepository.countByStatus(BorrowStatus.OVERDUE))
                 .availableBooks(bookCopyRepository.countByStatus(BookCopy.CopyStatus.AVAILABLE))
                 .build();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public StudentDashboardResponse getStudentDashboard(User student) {
         List<BorrowStatus> activeStatuses = List.of(BorrowStatus.ISSUED, BorrowStatus.OVERDUE);
         var currentlyBorrowed = borrowTransactionRepository.findByUserAndStatusIn(student, activeStatuses).stream()
@@ -76,12 +77,26 @@ public class DashboardServiceImpl implements DashboardService {
 
         long totalBorrowedAllTime = borrowTransactionRepository.findByUserOrderByRequestDateDesc(student).size();
 
+        Long totalBooks = bookRepository.countByIsDeletedFalse();
+        Long pendingRequests = borrowTransactionRepository.countByUserAndStatusIn(
+                student, List.of(BorrowStatus.REQUESTED));
+        
+        // Calculate unpaid fines consistently using the mapper which already calculates dynamically
+        BigDecimal unpaidFines = borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(student).stream()
+                .filter(t -> !Boolean.TRUE.equals(t.getFinePaid()))
+                .map(borrowTransactionMapper::toResponse)
+                .map(t -> t.getFineAmount() == null ? BigDecimal.ZERO : t.getFineAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         return StudentDashboardResponse.builder()
                 .currentlyBorrowed(currentlyBorrowed)
                 .overdueCount(overdueCount)
                 .currentFines(currentFines)
                 .activeReservations(activeReservations)
                 .totalBorrowedAllTime(totalBorrowedAllTime)
+                .totalBooks(totalBooks)
+                .pendingRequests(pendingRequests)
+                .unpaidFines(unpaidFines)
                 .build();
     }
 

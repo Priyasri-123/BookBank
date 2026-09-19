@@ -3,41 +3,66 @@ import { borrowApi } from '../../api/borrowApi';
 import { getErrorMessage } from '../../api/axios';
 import Spinner from '../../components/common/Spinner';
 import Alert from '../../components/common/Alert';
+import Toast from '../../components/common/Toast';
 import Badge from '../../components/common/Badge';
 
 export default function BorrowRequests() {
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [filter, setFilter] = useState('PENDING');
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const load = async (currentFilter) => {
+    setLoading(true);
     try {
       const { data } = currentFilter === 'PENDING' ? await borrowApi.getPending() : await borrowApi.getAll();
       setTransactions(data);
+      setError('');
     } catch (err) {
       setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => { load(filter); }, [filter]);
 
-  const handleAction = async (action, id) => {
-    setError('');
-    setSuccess('');
+  const handleApprove = async (id) => {
     try {
-      if (action === 'approve') await borrowApi.approve(id);
-      if (action === 'reject') await borrowApi.reject(id);
-      if (action === 'return') await borrowApi.returnBook(id);
-      setSuccess('Action completed successfully.');
+      await borrowApi.approve(id);
+      setToast({ type: 'success', message: 'Request approved successfully.' });
       load(filter);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setToast({ type: 'error', message: getErrorMessage(err) });
     }
   };
 
-  if (error && !transactions) return <Alert message={error} />;
-  if (!transactions) return <Spinner />;
+  const handleRejectConfirm = async () => {
+    setRejecting(true);
+    try {
+      await borrowApi.reject(rejectTarget.id);
+      setRejectTarget(null);
+      setToast({ type: 'success', message: 'Request rejected.' });
+      load(filter);
+    } catch (err) {
+      setToast({ type: 'error', message: getErrorMessage(err) });
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  const handleReturn = async (id) => {
+    try {
+      await borrowApi.returnBook(id);
+      setToast({ type: 'success', message: 'Book marked as returned.' });
+      load(filter);
+    } catch (err) {
+      setToast({ type: 'error', message: getErrorMessage(err) });
+    }
+  };
 
   return (
     <div>
@@ -49,12 +74,18 @@ export default function BorrowRequests() {
         <button className={`btn btn-sm ${filter === 'ALL' ? 'btn-primary' : 'btn-outline'}`} style={{ marginLeft: 8 }} onClick={() => setFilter('ALL')}>All</button>
       </div>
 
-      <Alert type="error" message={error} />
-      <Alert type="success" message={success} />
+      {error && <Alert type="error" message={error} />}
+      <Toast
+        type={toast?.type}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
 
       <div className="card">
-        {transactions.length === 0 ? (
-          <p className="empty-state">No requests to show.</p>
+        {loading && !transactions ? <Spinner /> : transactions.length === 0 ? (
+          <div className="empty-state">
+            <p>{filter === 'PENDING' ? 'No pending requests.' : 'No requests to show.'}</p>
+          </div>
         ) : (
           <table>
             <thead><tr><th>Student</th><th>Book</th><th>Requested</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
@@ -63,18 +94,18 @@ export default function BorrowRequests() {
                 <tr key={t.id}>
                   <td>{t.userName}</td>
                   <td>{t.bookTitle}</td>
-                  <td>{new Date(t.requestDate).toLocaleDateString()}</td>
-                  <td>{t.dueDate || '-'}</td>
+                  <td>{t.requestDate ? new Date(t.requestDate).toLocaleDateString() : '-'}</td>
+                  <td>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '-'}</td>
                   <td><Badge status={t.status} /></td>
                   <td>
                     {t.status === 'REQUESTED' && (
                       <>
-                        <button className="btn btn-primary btn-sm" onClick={() => handleAction('approve', t.id)}>Approve</button>
-                        <button className="btn btn-danger btn-sm" style={{ marginLeft: 6 }} onClick={() => handleAction('reject', t.id)}>Reject</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => handleApprove(t.id)}>Approve</button>
+                        <button className="btn btn-danger btn-sm" style={{ marginLeft: 6 }} onClick={() => setRejectTarget(t)}>Reject</button>
                       </>
                     )}
                     {(t.status === 'ISSUED' || t.status === 'OVERDUE') && (
-                      <button className="btn btn-accent btn-sm" onClick={() => handleAction('return', t.id)}>Mark Returned</button>
+                      <button className="btn btn-accent btn-sm" onClick={() => handleReturn(t.id)}>Mark Returned</button>
                     )}
                   </td>
                 </tr>
@@ -83,6 +114,26 @@ export default function BorrowRequests() {
           </table>
         )}
       </div>
+
+      {rejectTarget && (
+        <div className="modal-overlay" onClick={() => setRejectTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Reject Request</h2>
+              <button className="modal-close" onClick={() => setRejectTarget(null)} aria-label="Close">✕</button>
+            </div>
+            <p style={{ margin: '12px 0' }}>
+              Are you sure you want to reject the request from <strong>{rejectTarget.userName}</strong> for <strong>{rejectTarget.bookTitle}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setRejectTarget(null)} disabled={rejecting}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleRejectConfirm} disabled={rejecting}>
+                {rejecting ? 'Rejecting...' : 'Confirm Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -201,6 +201,7 @@ mvn test
 | POST | `/api/borrow-requests` | Student requests a book |
 | PUT | `/api/borrow-requests/{id}/approve` | Approve a request |
 | PUT | `/api/borrow-transactions/{id}/return` | Mark a book returned |
+| GET | `/api/borrow-transactions/my-fines` | List the student's unpaid fines (Demo Pay available on the Student Dashboard) |
 | POST | `/api/reservations` | Reserve an unavailable book |
 | GET | `/api/dashboard/admin` | Admin dashboard stats |
 | GET | `/api/dashboard/student` | Student dashboard stats |
@@ -222,7 +223,7 @@ Full documentation lives in Swagger UI once the backend is running.
 ## 11. Future Improvements
 
 - Book cover image upload (currently uses an image URL field)
-- Fine payment integration
+- Fine payment integration (demo-only payment UI on the Student Dashboard; marks fine Paid for the session — no real payment gateway)
 - Refresh tokens for longer sessions
 - Docker Compose for one-command local setup
 

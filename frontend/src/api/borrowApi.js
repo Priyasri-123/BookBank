@@ -10,4 +10,6 @@ export const borrowApi = {
   getOverdue: () => api.get('/borrow-transactions/overdue'),
   getMyHistory: () => api.get('/borrow-transactions/my-history'),
   getMyCurrent: () => api.get('/borrow-transactions/my-current'),
+  getMyFines: () => api.get('/borrow-transactions/my-fines'),
+  payFine: (id, txnId) => api.put(`/borrow-transactions/${id}/pay-fine`, { txnId }),
 };

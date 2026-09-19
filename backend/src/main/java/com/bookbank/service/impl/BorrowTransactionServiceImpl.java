@@ -6,6 +6,7 @@ import com.bookbank.entity.BookCopy;
 import com.bookbank.entity.BookCopy.CopyStatus;
 import com.bookbank.entity.BorrowTransaction;
 import com.bookbank.entity.BorrowTransaction.BorrowStatus;
+import com.bookbank.entity.Role;
 import com.bookbank.entity.User;
 import com.bookbank.exception.BookNotAvailableException;
 import com.bookbank.exception.BorrowLimitExceededException;
@@ -182,30 +183,42 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
 
     @Override
     @Transactional
-    public BorrowTransactionResponse returnBook(Long transactionId) {
+    public BorrowTransactionResponse returnBook(User user, Long transactionId) {
         BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        boolean isStaff = user.getRole() == Role.ADMIN || user.getRole() == Role.LIBRARIAN;
+        if (!isStaff && !transaction.getUser().getId().equals(user.getId())) {
+            throw new InvalidRequestException("You can only return your own books");
+        }
 
         if (transaction.getStatus() != BorrowStatus.ISSUED && transaction.getStatus() != BorrowStatus.OVERDUE) {
             throw new InvalidRequestException("Only ISSUED or OVERDUE transactions can be returned");
         }
 
         LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
         transaction.setReturnDate(now);
 
-        // Fine calculation: overdue days x configured fine-per-day
-        if (transaction.getDueDate() != null && now.toLocalDate().isAfter(transaction.getDueDate())) {
-            long overdueDays = ChronoUnit.DAYS.between(transaction.getDueDate(), now.toLocalDate());
-            BigDecimal fine = settingsService.getFinePerDay().multiply(BigDecimal.valueOf(overdueDays));
-            transaction.setFineAmount(fine);
+        BigDecimal finalFine = BigDecimal.ZERO;
+        if (transaction.getDueDate() != null && today.isAfter(transaction.getDueDate())) {
+            long overdueDays = ChronoUnit.DAYS.between(transaction.getDueDate(), today);
+            finalFine = settingsService.getFinePerDay().multiply(BigDecimal.valueOf(overdueDays));
         }
 
+        BigDecimal paidAmount = transaction.getFinePaidAmount();
+        if (paidAmount == null) {
+            paidAmount = Boolean.TRUE.equals(transaction.getFinePaid()) && transaction.getFineAmount() != null
+                    ? transaction.getFineAmount()
+                    : BigDecimal.ZERO;
+        }
+        transaction.setFineAmount(finalFine);
+        transaction.setFinePaidAmount(paidAmount);
+        transaction.setFinePaid(finalFine.compareTo(BigDecimal.ZERO) > 0 && paidAmount.compareTo(finalFine) >= 0);
         transaction.setStatus(BorrowStatus.RETURNED);
 
         BookCopy copy = transaction.getBookCopy();
         Book book = copy.getBook();
 
-        // If there's an active reservation queue for this book, the copy goes to RESERVED
-        // (held for the next person) instead of straight back to AVAILABLE.
         boolean hasQueue = reservationService.hasActiveQueue(book.getId());
         copy.setStatus(hasQueue ? CopyStatus.RESERVED : CopyStatus.AVAILABLE);
         bookCopyRepository.save(copy);
@@ -221,38 +234,85 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
             reservationService.notifyNextInQueue(book.getId());
         }
 
-        return borrowTransactionMapper.toResponse(saved);
+        notificationService.notify(user,
+                "You have returned '" + book.getTitle() + "'. " +
+                (finalFine.compareTo(BigDecimal.ZERO) > 0
+                        ? "Fine amount: ₹" + finalFine
+                        : "No fine."));
+
+        return borrowTransactionMapper.toResponse(
+                saved,
+                settingsService.getFinePerDay(),
+                borrowTransactionMapper.calculateOverdueDays(saved, today),
+                null);
     }
 
     @Override
     public List<BorrowTransactionResponse> getAll() {
-        return borrowTransactionRepository.findAllWithDetails().stream().map(borrowTransactionMapper::toResponse).toList();
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        return borrowTransactionRepository.findAllWithDetails().stream()
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
     }
 
     @Override
     public List<BorrowTransactionResponse> getPending() {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository.findByStatusWithDetails(BorrowStatus.REQUESTED).stream()
-                .map(borrowTransactionMapper::toResponse).toList();
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
     }
 
     @Override
     public List<BorrowTransactionResponse> getMyHistory(User user) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(user).stream()
-                .map(borrowTransactionMapper::toResponse).toList();
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
     }
 
     @Override
     public List<BorrowTransactionResponse> getMyCurrentlyBorrowed(User user) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository
                 .findByUserAndStatusInWithDetails(user, List.of(BorrowStatus.ISSUED, BorrowStatus.OVERDUE)).stream()
-                .map(borrowTransactionMapper::toResponse).toList();
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BorrowTransactionResponse> getMyUnpaidFines(User user) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        LocalDate now = LocalDate.now();
+        return borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(user).stream()
+                .filter(t -> !Boolean.TRUE.equals(t.getFinePaid()))
+                .map(t -> {
+                    Long overdueDays = calculateOverdueDays(t, now);
+                    BigDecimal calculatedFine = overdueDays > 0 
+                        ? finePerDay.multiply(BigDecimal.valueOf(overdueDays)) 
+                        : BigDecimal.ZERO;
+                    return borrowTransactionMapper.toResponse(t, finePerDay, overdueDays, calculatedFine);
+                })
+                .filter(t -> t.getFineAmount() != null && t.getFineAmount().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
     }
 
     @Override
     public List<BorrowTransactionResponse> getOverdue() {
         refreshOverdueStatuses();
+        BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository.findOverdueWithDetails(LocalDate.now()).stream()
-                .map(borrowTransactionMapper::toResponse).toList();
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
+    }
+
+    private Long calculateOverdueDays(BorrowTransaction t, LocalDate now) {
+        if (t.getDueDate() == null) return 0L;
+        if (now.isBefore(t.getDueDate()) || now.isEqual(t.getDueDate())) {
+            return 0L;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(t.getDueDate(), now);
     }
 
     @Override
@@ -324,6 +384,43 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
         notificationService.notify(student,
                 "Your request for '" + book.getTitle() + "' was auto-approved. Due date: " + transaction.getDueDate());
 
+        return borrowTransactionMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public BorrowTransactionResponse payFine(User student, Long transactionId, String txnId) {
+        BorrowTransaction transaction = getTransactionOrThrow(transactionId);
+
+        // Verify ownership
+        if (!transaction.getUser().getId().equals(student.getId())) {
+            throw new InvalidRequestException("You can only pay your own fines");
+        }
+
+        // Calculate current outstanding fine
+        BigDecimal currentFine = borrowTransactionMapper.calculateFineAmount(transaction, settingsService.getFinePerDay(), LocalDate.now());
+
+        // Determine already paid amount
+        BigDecimal alreadyPaid = transaction.getFinePaidAmount();
+        if (alreadyPaid == null) {
+            alreadyPaid = Boolean.TRUE.equals(transaction.getFinePaid()) && currentFine.compareTo(BigDecimal.ZERO) > 0
+                    ? currentFine
+                    : BigDecimal.ZERO;
+        }
+        BigDecimal remaining = currentFine.subtract(alreadyPaid).max(BigDecimal.ZERO);
+
+        // Reject payment only when actual outstanding fine is zero or already fully paid
+        if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidRequestException("No unpaid fine exists for this transaction");
+        }
+
+        transaction.setFineAmount(currentFine);
+        transaction.setFinePaid(true);
+        transaction.setFinePaidAmount(currentFine);
+        transaction.setFinePaymentTxnId(txnId);
+        transaction.setFinePaymentDate(LocalDateTime.now());
+
+        BorrowTransaction saved = borrowTransactionRepository.save(transaction);
         return borrowTransactionMapper.toResponse(saved);
     }
 

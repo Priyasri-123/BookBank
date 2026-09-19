@@ -1,6 +1,7 @@
 package com.bookbank.controller;
 
 import com.bookbank.dto.request.BorrowRequestDto;
+import com.bookbank.dto.request.PayFineRequest;
 import com.bookbank.dto.response.BorrowTransactionResponse;
 import com.bookbank.security.CurrentUserProvider;
 import com.bookbank.service.BorrowTransactionService;
@@ -53,9 +54,9 @@ public class BorrowTransactionController {
     }
 
     @PutMapping("/borrow-transactions/{id}/return")
-    @PreAuthorize("hasAnyRole('ADMIN','LIBRARIAN')")
+    @PreAuthorize("hasAnyRole('ADMIN','LIBRARIAN','STUDENT')")
     public ResponseEntity<BorrowTransactionResponse> returnBook(@PathVariable Long id) {
-        return ResponseEntity.ok(borrowTransactionService.returnBook(id));
+        return ResponseEntity.ok(borrowTransactionService.returnBook(currentUserProvider.getCurrentUser(), id));
     }
 
     @GetMapping("/borrow-transactions/overdue")
@@ -74,5 +75,19 @@ public class BorrowTransactionController {
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<List<BorrowTransactionResponse>> getMyCurrent() {
         return ResponseEntity.ok(borrowTransactionService.getMyCurrentlyBorrowed(currentUserProvider.getCurrentUser()));
+    }
+
+    @GetMapping("/borrow-transactions/my-fines")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<List<BorrowTransactionResponse>> getMyUnpaidFines() {
+        return ResponseEntity.ok(borrowTransactionService.getMyUnpaidFines(currentUserProvider.getCurrentUser()));
+    }
+
+    @PutMapping("/borrow-transactions/{id}/pay-fine")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<BorrowTransactionResponse> payFine(
+            @PathVariable Long id,
+            @Valid @RequestBody PayFineRequest request) {
+        return ResponseEntity.ok(borrowTransactionService.payFine(currentUserProvider.getCurrentUser(), id, request.getTxnId()));
     }
 }

@@ -16,4 +16,9 @@ public class StudentDashboardResponse {
     private BigDecimal currentFines;
     private List<ReservationResponse> activeReservations;
     private long totalBorrowedAllTime;
+
+    // Additional summary data for the student dashboard.
+    private Long totalBooks;
+    private Long pendingRequests;
+    private BigDecimal unpaidFines;
 }

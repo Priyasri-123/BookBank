@@ -56,6 +56,16 @@ public class BorrowTransaction {
     @Column(name = "fine_paid", nullable = false)
     private Boolean finePaid = false;
 
+    @Column(name = "fine_payment_txn_id", length = 100)
+    private String finePaymentTxnId;
+
+    @Column(name = "fine_payment_date")
+    private LocalDateTime finePaymentDate;
+
+    @Builder.Default
+    @Column(name = "fine_paid_amount", precision = 10, scale = 2)
+    private BigDecimal finePaidAmount = BigDecimal.ZERO;
+
     public enum BorrowStatus {
         REQUESTED, APPROVED, REJECTED, ISSUED, RETURNED, OVERDUE
     }

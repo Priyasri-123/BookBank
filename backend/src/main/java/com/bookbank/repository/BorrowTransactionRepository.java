@@ -48,6 +48,6 @@ public interface BorrowTransactionRepository extends JpaRepository<BorrowTransac
     @Query("SELECT bt FROM BorrowTransaction bt LEFT JOIN FETCH bt.user LEFT JOIN FETCH bt.bookCopy bc LEFT JOIN FETCH bc.book")
     List<BorrowTransaction> findAllWithDetails();
 
-    @Query("SELECT bt FROM BorrowTransaction bt LEFT JOIN FETCH bt.user LEFT JOIN FETCH bt.bookCopy bc LEFT JOIN FETCH bc.book WHERE bt.status = 'ISSUED' AND bt.dueDate < :today")
+    @Query("SELECT bt FROM BorrowTransaction bt LEFT JOIN FETCH bt.user LEFT JOIN FETCH bt.bookCopy bc LEFT JOIN FETCH bc.book WHERE bt.status IN ('ISSUED', 'OVERDUE') AND bt.dueDate < :today")
     List<BorrowTransaction> findOverdueWithDetails(LocalDate today);
 }

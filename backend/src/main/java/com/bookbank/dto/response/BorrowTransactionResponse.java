@@ -24,5 +24,12 @@ public class BorrowTransactionResponse {
     private LocalDateTime returnDate;
     private String status;
     private BigDecimal fineAmount;
+    private BigDecimal fineAmountDue;
+    private BigDecimal finePaidAmount;
     private Boolean finePaid;
+    private String finePaymentStatus;
+    private String finePaymentTxnId;
+    private LocalDateTime finePaymentDate;
+    private Long overdueDays;
+    private BigDecimal finePerDay;
 }
