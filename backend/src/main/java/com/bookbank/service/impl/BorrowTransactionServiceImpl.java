@@ -282,6 +282,23 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<BorrowTransactionResponse> getMyFines(User user) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        LocalDate now = LocalDate.now();
+        return borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(user).stream()
+                .filter(t -> t.getFineAmount() != null && t.getFineAmount().compareTo(BigDecimal.ZERO) > 0)
+                .map(t -> {
+                    Long overdueDays = calculateOverdueDays(t, now);
+                    BigDecimal calculatedFine = overdueDays > 0
+                        ? finePerDay.multiply(BigDecimal.valueOf(overdueDays))
+                        : BigDecimal.ZERO;
+                    return borrowTransactionMapper.toResponse(t, finePerDay, overdueDays, calculatedFine);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<BorrowTransactionResponse> getMyUnpaidFines(User user) {
         BigDecimal finePerDay = settingsService.getFinePerDay();
         LocalDate now = LocalDate.now();
@@ -289,13 +306,27 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
                 .filter(t -> !Boolean.TRUE.equals(t.getFinePaid()))
                 .map(t -> {
                     Long overdueDays = calculateOverdueDays(t, now);
-                    BigDecimal calculatedFine = overdueDays > 0 
-                        ? finePerDay.multiply(BigDecimal.valueOf(overdueDays)) 
+                    BigDecimal calculatedFine = overdueDays > 0
+                        ? finePerDay.multiply(BigDecimal.valueOf(overdueDays))
                         : BigDecimal.ZERO;
                     return borrowTransactionMapper.toResponse(t, finePerDay, overdueDays, calculatedFine);
                 })
                 .filter(t -> t.getFineAmount() != null && t.getFineAmount().compareTo(BigDecimal.ZERO) > 0)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getUnpaidFineTotal() {
+        BigDecimal total = borrowTransactionRepository.sumUnpaidFines();
+        return total != null ? total : BigDecimal.ZERO;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getUnpaidFineTotal(User user) {
+        BigDecimal total = borrowTransactionRepository.sumUnpaidFines(user);
+        return total != null ? total : BigDecimal.ZERO;
     }
 
     @Override
