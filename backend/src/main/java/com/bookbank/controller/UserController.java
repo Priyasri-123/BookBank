@@ -1,14 +1,16 @@
 package com.bookbank.controller;
 
 import com.bookbank.dto.request.UpdateProfileRequest;
+import com.bookbank.dto.response.StudentLibrarySummaryResponse;
 import com.bookbank.dto.response.UserResponse;
 import com.bookbank.security.CurrentUserProvider;
+import com.bookbank.service.BorrowTransactionService;
 import com.bookbank.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
+    private final BorrowTransactionService borrowTransactionService;
     private final CurrentUserProvider currentUserProvider;
 
     @GetMapping("/me")
@@ -44,6 +47,12 @@ public class UserController {
     @PreAuthorize("hasAnyRole('ADMIN','LIBRARIAN')")
     public ResponseEntity<UserResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getById(id));
+    }
+
+    @GetMapping("/{id}/library-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<StudentLibrarySummaryResponse> getLibrarySummary(@PathVariable Long id) {
+        return ResponseEntity.ok(borrowTransactionService.getStudentLibrarySummary(id));
     }
 
     @PutMapping("/{id}/status")

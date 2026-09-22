@@ -1,11 +1,15 @@
 package com.bookbank.service.impl;
 
 import com.bookbank.dto.response.BorrowTransactionResponse;
+import com.bookbank.dto.response.ReservationResponse;
+import com.bookbank.dto.response.StudentLibrarySummaryResponse;
 import com.bookbank.entity.Book;
 import com.bookbank.entity.BookCopy;
 import com.bookbank.entity.BookCopy.CopyStatus;
 import com.bookbank.entity.BorrowTransaction;
 import com.bookbank.entity.BorrowTransaction.BorrowStatus;
+import com.bookbank.entity.Reservation;
+import com.bookbank.entity.Reservation.ReservationStatus;
 import com.bookbank.entity.Role;
 import com.bookbank.entity.User;
 import com.bookbank.exception.BookNotAvailableException;
@@ -13,9 +17,12 @@ import com.bookbank.exception.BorrowLimitExceededException;
 import com.bookbank.exception.InvalidRequestException;
 import com.bookbank.exception.ResourceNotFoundException;
 import com.bookbank.mapper.BorrowTransactionMapper;
+import com.bookbank.mapper.ReservationMapper;
 import com.bookbank.repository.BookCopyRepository;
 import com.bookbank.repository.BookRepository;
 import com.bookbank.repository.BorrowTransactionRepository;
+import com.bookbank.repository.ReservationRepository;
+import com.bookbank.repository.UserRepository;
 import com.bookbank.service.BorrowTransactionService;
 import com.bookbank.service.NotificationService;
 import com.bookbank.service.ReservationService;
@@ -46,6 +53,9 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
     private final BookRepository bookRepository;
     private final BookCopyRepository bookCopyRepository;
     private final BorrowTransactionMapper borrowTransactionMapper;
+    private final UserRepository userRepository;
+    private final ReservationRepository reservationRepository;
+    private final ReservationMapper reservationMapper;
     private final SettingsService settingsService;
     private final NotificationService notificationService;
     private final ReservationService reservationService;
@@ -327,6 +337,108 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
     public BigDecimal getUnpaidFineTotal(User user) {
         BigDecimal total = borrowTransactionRepository.sumUnpaidFines(user);
         return total != null ? total : BigDecimal.ZERO;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BorrowTransactionResponse> getAdminFines(String paymentStatus, String keyword) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        LocalDate now = LocalDate.now();
+        return borrowTransactionRepository.findAllWithDetails().stream()
+                .map(t -> {
+                    Long overdueDays = calculateOverdueDays(t, now);
+                    return borrowTransactionMapper.toResponse(t, finePerDay, overdueDays, null);
+                })
+                .filter(t -> matchesPaymentFilter(t, paymentStatus))
+                .filter(t -> matchesKeyword(t, keyword))
+                .toList();
+    }
+
+    private boolean matchesPaymentFilter(BorrowTransactionResponse t, String paymentStatus) {
+        if (paymentStatus == null || paymentStatus.equalsIgnoreCase("ALL")) {
+            return true;
+        }
+        String status = t.getFinePaymentStatus();
+        if (status == null) return false;
+        return status.equalsIgnoreCase(paymentStatus);
+    }
+
+    private boolean matchesKeyword(BorrowTransactionResponse t, String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return true;
+        String k = keyword.toLowerCase();
+        return (t.getUserName() != null && t.getUserName().toLowerCase().contains(k))
+                || (t.getUserEmail() != null && t.getUserEmail().toLowerCase().contains(k))
+                || (t.getUserRegisterNumber() != null && t.getUserRegisterNumber().toLowerCase().contains(k))
+                || (t.getBookTitle() != null && t.getBookTitle().toLowerCase().contains(k))
+                || (t.getCopyCode() != null && t.getCopyCode().toLowerCase().contains(k));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StudentLibrarySummaryResponse getStudentLibrarySummary(Long studentId) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with id: " + studentId));
+
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        LocalDate now = LocalDate.now();
+
+        List<BorrowTransaction> allTransactions =
+                borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(student);
+
+        List<BorrowTransactionResponse> currentlyBorrowed = allTransactions.stream()
+                .filter(t -> t.getStatus() == BorrowStatus.ISSUED || t.getStatus() == BorrowStatus.OVERDUE)
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
+
+        List<BorrowTransactionResponse> overdueBooks = allTransactions.stream()
+                .filter(t -> t.getStatus() == BorrowStatus.OVERDUE)
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
+
+        List<BorrowTransactionResponse> pendingRequests = allTransactions.stream()
+                .filter(t -> t.getStatus() == BorrowStatus.REQUESTED)
+                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .toList();
+
+        List<ReservationResponse> activeReservations = reservationRepository
+                .findByUserOrderByReservationDateDesc(student).stream()
+                .filter(r -> r.getStatus() == ReservationStatus.ACTIVE)
+                .map(reservationMapper::toResponse)
+                .toList();
+
+        BigDecimal currentUnpaidFine = borrowTransactionRepository.sumUnpaidFines(student);
+        if (currentUnpaidFine == null) currentUnpaidFine = BigDecimal.ZERO;
+
+        BigDecimal totalPaidFine = borrowTransactionRepository.sumPaidFines(student);
+        if (totalPaidFine == null) totalPaidFine = BigDecimal.ZERO;
+
+        long totalTransactions = allTransactions.size();
+        long currentlyBorrowedCount = currentlyBorrowed.size();
+        long returnedCount = allTransactions.stream()
+                .filter(t -> t.getStatus() == BorrowStatus.RETURNED)
+                .count();
+        long overdueCount = overdueBooks.size();
+
+        return StudentLibrarySummaryResponse.builder()
+                .studentId(student.getId())
+                .studentName(student.getName())
+                .studentEmail(student.getEmail())
+                .studentRegisterNumber(student.getRegisterNumber())
+                .role(student.getRole().name())
+                .active(student.getActive())
+                .createdAt(student.getCreatedAt())
+                .currentlyBorrowed(currentlyBorrowed)
+                .overdueBooks(overdueBooks)
+                .pendingRequests(pendingRequests)
+                .activeReservations(activeReservations)
+                .currentUnpaidFine(currentUnpaidFine)
+                .totalPaidFine(totalPaidFine)
+                .overdueTransactionCount(overdueCount)
+                .totalBorrowingTransactions(totalTransactions)
+                .currentlyBorrowedCount(currentlyBorrowedCount)
+                .returnedBooksCount(returnedCount)
+                .overdueCount(overdueCount)
+                .build();
     }
 
     @Override

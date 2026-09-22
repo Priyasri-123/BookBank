@@ -35,6 +35,18 @@ public interface BorrowTransactionRepository extends JpaRepository<BorrowTransac
     @Query("SELECT COALESCE(SUM(bt.fineAmount), 0) FROM BorrowTransaction bt WHERE bt.user = :user AND bt.finePaid = false")
     java.math.BigDecimal sumUnpaidFines(User user);
 
+    @Query("SELECT COUNT(DISTINCT bt.user) FROM BorrowTransaction bt WHERE bt.status = 'OVERDUE'")
+    long countDistinctStudentsWithOverdueBooks();
+
+    @Query("SELECT COUNT(DISTINCT bt.user) FROM BorrowTransaction bt WHERE bt.finePaid = false AND bt.fineAmount > 0")
+    long countDistinctUsersWithUnpaidFines();
+
+    @Query("SELECT COALESCE(SUM(bt.finePaidAmount), 0) FROM BorrowTransaction bt WHERE bt.finePaid = true")
+    java.math.BigDecimal sumPaidFines();
+
+    @Query("SELECT COALESCE(SUM(bt.finePaidAmount), 0) FROM BorrowTransaction bt WHERE bt.user = :user AND bt.finePaid = true")
+    java.math.BigDecimal sumPaidFines(User user);
+
     // Eager fetch versions (used for returning full DTOs)
     @Query("SELECT bt FROM BorrowTransaction bt LEFT JOIN FETCH bt.user LEFT JOIN FETCH bt.bookCopy bc LEFT JOIN FETCH bc.book WHERE bt.user = :user ORDER BY bt.requestDate DESC")
     List<BorrowTransaction> findByUserWithDetailsOrderByRequestDateDesc(User user);

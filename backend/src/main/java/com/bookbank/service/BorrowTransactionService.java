@@ -21,8 +21,11 @@ public interface BorrowTransactionService {
     java.math.BigDecimal getUnpaidFineTotal();
 
     java.math.BigDecimal getUnpaidFineTotal(User user);
+    List<BorrowTransactionResponse> getAdminFines(String paymentStatus, String keyword);
     List<BorrowTransactionResponse> getOverdue();
     void refreshOverdueStatuses(); // scheduled job hook
     BorrowTransactionResponse autoApprovePendingRequest(Long transactionId);
     BorrowTransactionResponse payFine(User student, Long transactionId, String txnId);
+
+    com.bookbank.dto.response.StudentLibrarySummaryResponse getStudentLibrarySummary(Long studentId);
 }

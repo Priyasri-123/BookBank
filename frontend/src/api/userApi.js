@@ -5,6 +5,7 @@ export const userApi = {
   updateMyProfile: (data) => api.put('/users/me', data),
   getAll: (keyword) => api.get('/users', { params: keyword ? { keyword } : {} }),
   getById: (id) => api.get(`/users/${id}`),
+  getLibrarySummary: (id) => api.get(`/users/${id}/library-summary`),
   updateStatus: (id, active) => api.put(`/users/${id}/status`, null, { params: { active } }),
   changeRole: (id, role) => api.put(`/users/${id}/role`, null, { params: { role } }),
   delete: (id) => api.delete(`/users/${id}`),

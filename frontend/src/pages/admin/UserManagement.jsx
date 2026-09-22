@@ -5,6 +5,7 @@ import Spinner from '../../components/common/Spinner';
 import Alert from '../../components/common/Alert';
 import Toast from '../../components/common/Toast';
 import Badge from '../../components/common/Badge';
+import StudentLibraryDetails from '../../components/admin/StudentLibraryDetails';
 
 const ROLES = ['STUDENT', 'LIBRARIAN', 'ADMIN'];
 
@@ -14,6 +15,7 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [detailsTarget, setDetailsTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -120,6 +122,15 @@ export default function UserManagement() {
                         </span>
                       </td>
                       <td>
+                        {u.role === 'STUDENT' && (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            style={{ marginLeft: 6 }}
+                            onClick={() => setDetailsTarget(u)}
+                          >
+                            View Details
+                          </button>
+                        )}
                         <button
                           className="btn btn-outline btn-sm"
                           onClick={() => handleToggleActive(u)}
@@ -160,6 +171,20 @@ export default function UserManagement() {
               <button className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleting}>
                 {deleting ? 'Deleting...' : 'Confirm Delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailsTarget && (
+        <div className="modal-overlay" onClick={() => setDetailsTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px' }}>
+            <div className="modal-header">
+              <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Student Library Details</h2>
+              <button className="modal-close" onClick={() => setDetailsTarget(null)} aria-label="Close">✕</button>
+            </div>
+            <div style={{ maxHeight: '80vh', overflowY: 'auto', padding: '4px 0' }}>
+              <StudentLibraryDetails studentId={detailsTarget.id} />
             </div>
           </div>
         </div>
