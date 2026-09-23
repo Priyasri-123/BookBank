@@ -3,6 +3,7 @@ package com.bookbank.controller;
 import com.bookbank.dto.request.BorrowRequestDto;
 import com.bookbank.dto.request.PayFineRequest;
 import com.bookbank.dto.response.BorrowTransactionResponse;
+import com.bookbank.entity.BorrowTransaction.BorrowStatus;
 import com.bookbank.security.CurrentUserProvider;
 import com.bookbank.service.BorrowTransactionService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -39,6 +41,18 @@ public class BorrowTransactionController {
                 ? borrowTransactionService.getPending()
                 : borrowTransactionService.getAll();
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/borrow-transactions/filtered")
+    @PreAuthorize("hasAnyRole('ADMIN','LIBRARIAN')")
+    public ResponseEntity<List<BorrowTransactionResponse>> getFiltered(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) List<BorrowStatus> statuses,
+            @RequestParam(required = false) Boolean finePaid,
+            @RequestParam(required = false) LocalDateTime requestDateFrom,
+            @RequestParam(required = false) LocalDateTime requestDateTo) {
+        return ResponseEntity.ok(borrowTransactionService.getFiltered(
+                keyword, statuses, finePaid, requestDateFrom, requestDateTo));
     }
 
     @PutMapping("/borrow-requests/{id}/approve")
@@ -81,6 +95,14 @@ public class BorrowTransactionController {
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<List<BorrowTransactionResponse>> getMyUnpaidFines() {
         return ResponseEntity.ok(borrowTransactionService.getMyUnpaidFines(currentUserProvider.getCurrentUser()));
+    }
+
+    @GetMapping("/admin/fines")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<BorrowTransactionResponse>> getAdminFines(
+            @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String keyword) {
+        return ResponseEntity.ok(borrowTransactionService.getAdminFines(paymentStatus, keyword));
     }
 
     @PutMapping("/borrow-transactions/{id}/pay-fine")

@@ -15,6 +15,8 @@ public class BorrowTransactionResponse {
     private Long id;
     private Long userId;
     private String userName;
+    private String userEmail;
+    private String userRegisterNumber;
     private Long bookCopyId;
     private String copyCode;
     private String bookTitle;
@@ -32,4 +34,11 @@ public class BorrowTransactionResponse {
     private LocalDateTime finePaymentDate;
     private Long overdueDays;
     private BigDecimal finePerDay;
+    // Request-context fields (populated for admin/librarian request listings)
+    private Integer bookAvailableCopies;
+    private Long studentCurrentlyBorrowedCount;
+    private Long studentOverdueCount;
+    private BigDecimal studentUnpaidFines;
+    private Boolean studentHasOverdue;
+    private Boolean studentHasUnpaidFines;
 }

@@ -23,5 +23,9 @@ public class BookResponse {
     private Integer publicationYear;
     private Integer totalCopies;
     private Integer availableCopies;
+    private Integer issuedCopies;
+    private Integer damagedCopies;
+    private Integer lostCopies;
+    private String bookStatus;
     private String imageUrl;
 }

@@ -1,6 +1,7 @@
 package com.bookbank.controller;
 
 import com.bookbank.entity.Notification;
+import com.bookbank.entity.NotificationType;
 import com.bookbank.security.CurrentUserProvider;
 import com.bookbank.service.NotificationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,8 +22,9 @@ public class NotificationController {
     private final CurrentUserProvider currentUserProvider;
 
     @GetMapping
-    public ResponseEntity<List<Notification>> getMyNotifications() {
-        return ResponseEntity.ok(notificationService.getMyNotifications(currentUserProvider.getCurrentUser()));
+    public ResponseEntity<List<Notification>> getMyNotifications(
+            @RequestParam(required = false) NotificationType type) {
+        return ResponseEntity.ok(notificationService.getMyNotifications(currentUserProvider.getCurrentUser(), type));
     }
 
     @GetMapping("/unread-count")
@@ -34,6 +36,12 @@ public class NotificationController {
     @PutMapping("/mark-all-read")
     public ResponseEntity<Void> markAllRead() {
         notificationService.markAllRead(currentUserProvider.getCurrentUser());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/read")
+    public ResponseEntity<Void> markRead(@PathVariable Long id) {
+        notificationService.markRead(id, currentUserProvider.getCurrentUser());
         return ResponseEntity.noContent().build();
     }
 }

@@ -172,6 +172,22 @@ npm run dev
 
 The app starts on **http://localhost:5173**.
 
+## 7.5 Demo Login Credentials
+
+The following credentials are created automatically by `DataSeeder` on first run and are
+intended for **local/demo testing only**. They are not for production use.
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@bookbank.com` | `<ADMIN_PASSWORD>` |
+
+- The admin password is seeded from the backend configuration and is **not published here**
+  to keep this public repository safe. Check `DataSeeder` in the backend source for the
+  local development value, or change it immediately after first login.
+- After starting the app, you can log in at **http://localhost:5173/login**.
+- For student/librarian accounts, register a new student via `POST /api/auth/register` or
+  ask an admin/librarian to create one.
+
 ## 8. Testing
 
 Backend unit tests (JUnit 5 + Mockito) cover authentication and the core borrowing workflow

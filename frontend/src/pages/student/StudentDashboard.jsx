@@ -16,7 +16,6 @@ export default function StudentDashboard() {
   const [data, setData] = useState(null);
   const [fines, setFines] = useState(null);
   const [error, setError] = useState('');
-  const [paidFines, setPaidFines] = useState({});
   const [payingFine, setPayingFine] = useState(null);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
@@ -38,15 +37,15 @@ export default function StudentDashboard() {
   }, []);
 
   const outstandingFine = useMemo(() => {
-    const unpaid = num(data?.unpaidFines);
-    const paid = Object.keys(paidFines).reduce((sum, id) => {
-      const fine = fines?.find((f) => String(f.id) === id);
-      return sum + num(fine?.fineAmount);
-    }, 0);
-    return Math.max(0, unpaid - paid);
-  }, [data, fines, paidFines]);
+    // Single source of truth: the backend's finePaid/finePaidAmount fields.
+    // Do NOT use a local paidFines tracker — it resets on page refresh and
+    // would show stale (reverted) fine data after a successful payment.
+    return (fines || [])
+      .filter((f) => !f.finePaid)
+      .reduce((sum, f) => sum + num(f.fineAmount), 0);
+  }, [fines]);
 
-  const unpaidFineList = (fines || []).filter((f) => !paidFines[f.id]);
+  const unpaidFineList = (fines || []).filter((f) => !f.finePaid);
   const hasUnpaidFine = outstandingFine > 0;
 
   const overdueDays = useMemo(() => {
@@ -61,20 +60,17 @@ export default function StudentDashboard() {
     return Math.max(0, diff);
   }, [hasUnpaidFine, unpaidFineList]);
 
-  const lastPaidTxnId = Object.values(paidFines)[0] || '';
+  const lastPaidTxnId = (() => {
+    const paid = (fines || []).find((f) => f.finePaid);
+    return paid?.finePaymentTxnId || '';
+  })();
 
   const handlePaid = async (id, txnId) => {
-    setPaidFines((p) => ({ ...p, [id]: txnId }));
     try {
       await borrowApi.payFine(id, txnId);
       setToast({ type: 'success', message: 'Fine paid successfully.' });
       loadDashboard();
     } catch (err) {
-      setPaidFines((p) => {
-        const next = { ...p };
-        delete next[id];
-        return next;
-      });
       setToast({ type: 'error', message: getErrorMessage(err) });
     }
   };
@@ -202,10 +198,16 @@ export default function StudentDashboard() {
 
       {/* Paid fines alert */}
       <div style={{ marginBottom: 24 }}>
-        {Object.keys(paidFines).length > 0 && (
+        {hasUnpaidFine && (
+          <Alert
+            type="error"
+            message={`You have an outstanding fine of ₹${fmt(outstandingFine)}. Pay it to avoid further accrual.`}
+          />
+        )}
+        {!hasUnpaidFine && (fines || []).some((f) => f.finePaid) && (
           <Alert
             type="success"
-            message={`✓ Demo payment recorded for ${Object.keys(paidFines).length} fine(s). No real money was transferred.`}
+            message="✓ All your fines are paid. Great job!"
           />
         )}
       </div>

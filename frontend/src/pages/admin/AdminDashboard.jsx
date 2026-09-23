@@ -5,16 +5,26 @@ import { getErrorMessage } from '../../api/axios';
 import StatCard from '../../components/common/StatCard';
 import Spinner from '../../components/common/Spinner';
 import Alert from '../../components/common/Alert';
+import Toast from '../../components/common/Toast';
 
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
 
-  const loadDashboard = () => {
+  const loadDashboard = (showRefreshToast = false) => {
     setError('');
     dashboardApi.admin()
-      .then((res) => setData(res.data))
-      .catch((err) => setError(getErrorMessage(err)));
+      .then((res) => {
+        setData(res.data);
+        if (showRefreshToast) {
+          setToast({ type: 'success', message: 'Dashboard refreshed.' });
+        }
+      })
+      .catch((err) => {
+        setError(getErrorMessage(err));
+        setToast({ type: 'error', message: getErrorMessage(err) });
+      });
   };
 
   useEffect(() => {
@@ -41,24 +51,46 @@ export default function AdminDashboard() {
     <div>
       <h1 className="page-title">Admin Dashboard</h1>
       <p className="page-subtitle">System-wide overview.</p>
+
+      <div className="section-heading">Users</div>
       <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <StatCard label="Total Students" value={data.totalStudents} icon="👥" />
+      </div>
+
+      <div className="section-heading">Library</div>
+      <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <StatCard label="Total Books" value={data.totalBooks} icon="📚" />
         <StatCard label="Total Book Copies" value={data.totalBookCopies} icon="📖" />
         <StatCard label="Available Copies" value={data.availableBookCopies} icon="✅" />
-      </div>
-      <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <StatCard label="Issued Books" value={data.issuedBooks} icon="📋" />
-        <StatCard label="Overdue Books" value={data.overdueBooks} icon="⏳" />
+      </div>
+
+      <div className="section-heading">Borrowing</div>
+      <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <StatCard label="Pending Requests" value={data.pendingRequests} icon="🔔" />
+        <StatCard label="Overdue Books" value={data.overdueBooks} icon="⏳" />
+        <StatCard label="Students With Overdue Books" value={data.studentsWithOverdueBooks} icon="⚠️" />
         <StatCard label="Active Reservations" value={data.activeReservations} icon="📅" />
       </div>
+
+      <div className="section-heading">Fines</div>
       <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <StatCard label="Total Unpaid Fines" value={fmtMoney(data.totalUnpaidFines)} icon="💰" />
+        <StatCard label="Students With Unpaid Fines" value={data.studentsWithUnpaidFines} icon="⚠️" />
+        <StatCard label="Total Paid Fines" value={fmtMoney(data.totalPaidFines)} icon="✅" />
       </div>
-      <div style={{ marginTop: 24 }}>
+
+      <div style={{ marginTop: 24, display: 'flex', gap: 10 }}>
         <Link to="/admin/requests" className="btn btn-primary">Manage Pending Requests</Link>
+        <Link to="/admin/fines" className="btn btn-outline">Fine Management</Link>
+        <button className="btn btn-outline btn-sm" onClick={() => loadDashboard(true)}>↻ Refresh</button>
       </div>
+
+      <Toast
+        type={toast?.type}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+      />
     </div>
   );
 }

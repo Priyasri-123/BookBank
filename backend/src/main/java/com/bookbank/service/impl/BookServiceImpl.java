@@ -4,12 +4,14 @@ import com.bookbank.dto.request.BookRequest;
 import com.bookbank.dto.response.BookResponse;
 import com.bookbank.entity.Author;
 import com.bookbank.entity.Book;
+import com.bookbank.entity.BookCopy;
 import com.bookbank.entity.Category;
 import com.bookbank.entity.Publisher;
 import com.bookbank.exception.InvalidRequestException;
 import com.bookbank.exception.ResourceNotFoundException;
 import com.bookbank.mapper.BookMapper;
 import com.bookbank.repository.AuthorRepository;
+import com.bookbank.repository.BookCopyRepository;
 import com.bookbank.repository.BookRepository;
 import com.bookbank.repository.CategoryRepository;
 import com.bookbank.repository.PublisherRepository;
@@ -29,6 +31,7 @@ public class BookServiceImpl implements BookService {
     private final PublisherRepository publisherRepository;
     private final CategoryRepository categoryRepository;
     private final BookMapper bookMapper;
+    private final BookCopyRepository bookCopyRepository;
 
     @Override
     @Transactional
@@ -100,17 +103,34 @@ public class BookServiceImpl implements BookService {
 
     @Override
     public BookResponse getById(Long id) {
-        return bookMapper.toResponse(getActiveBookOrThrow(id));
+        return enrich(getActiveBookOrThrow(id));
     }
 
     @Override
     public Page<BookResponse> search(String keyword, Pageable pageable) {
-        return bookRepository.search(keyword, pageable).map(bookMapper::toResponse);
+        return bookRepository.search(keyword, pageable).map(this::enrich);
     }
 
     @Override
     public Page<BookResponse> getAll(Pageable pageable) {
-        return bookRepository.findByIsDeletedFalse(pageable).map(bookMapper::toResponse);
+        return bookRepository.findByIsDeletedFalse(pageable).map(this::enrich);
+    }
+
+    private BookResponse enrich(Book b) {
+        BookResponse r = bookMapper.toResponse(b);
+        return bookMapper.toResponse(
+                b,
+                (int) bookCopyRepository.countByBookIdAndStatus(b.getId(), BookCopy.CopyStatus.ISSUED),
+                (int) bookCopyRepository.countByBookIdAndStatus(b.getId(), BookCopy.CopyStatus.DAMAGED),
+                (int) bookCopyRepository.countByBookIdAndStatus(b.getId(), BookCopy.CopyStatus.LOST),
+                deriveBookStatus(r)
+        );
+    }
+
+    private String deriveBookStatus(BookResponse r) {
+        if (r.getAvailableCopies() != null && r.getAvailableCopies() > 0) return "AVAILABLE";
+        if (r.getTotalCopies() != null && r.getTotalCopies() > 0) return "OUT_OF_STOCK";
+        return "AVAILABLE";
     }
 
     private Book getActiveBookOrThrow(Long id) {

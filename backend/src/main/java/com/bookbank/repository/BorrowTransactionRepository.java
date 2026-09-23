@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface BorrowTransactionRepository extends JpaRepository<BorrowTransaction, Long> {
@@ -46,6 +47,19 @@ public interface BorrowTransactionRepository extends JpaRepository<BorrowTransac
 
     @Query("SELECT COALESCE(SUM(bt.finePaidAmount), 0) FROM BorrowTransaction bt WHERE bt.user = :user AND bt.finePaid = true")
     java.math.BigDecimal sumPaidFines(User user);
+
+    @Query("SELECT bt FROM BorrowTransaction bt JOIN FETCH bt.bookCopy bc JOIN FETCH bc.book b " +
+           "WHERE (:keyword IS NULL OR LOWER(b.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(bc.copyCode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(bt.finePaymentTxnId) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+           "AND (:statuses IS NULL OR bt.status IN :statuses) " +
+           "AND (:finePaid IS NULL OR bt.finePaid = :finePaid) " +
+           "AND (:requestDateFrom IS NULL OR bt.requestDate >= :requestDateFrom) " +
+           "AND (:requestDateTo IS NULL OR bt.requestDate <= :requestDateTo) " +
+           "ORDER BY bt.requestDate DESC")
+    List<BorrowTransaction> findFiltered(String keyword, List<BorrowStatus> statuses,
+                                          Boolean finePaid, LocalDateTime requestDateFrom,
+                                          LocalDateTime requestDateTo);
 
     // Eager fetch versions (used for returning full DTOs)
     @Query("SELECT bt FROM BorrowTransaction bt LEFT JOIN FETCH bt.user LEFT JOIN FETCH bt.bookCopy bc LEFT JOIN FETCH bc.book WHERE bt.user = :user ORDER BY bt.requestDate DESC")

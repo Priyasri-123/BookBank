@@ -81,9 +81,6 @@ export default function Login() {
         <div className="auth-switch">
           Don't have an account? <Link to="/register">Register</Link>
         </div>
-        <div className="auth-switch" style={{ marginTop: 8, fontSize: '0.78rem' }}>
-          Admin demo login: admin@bookbank.com / Admin@123
-        </div>
       </div>
     </div>
   );

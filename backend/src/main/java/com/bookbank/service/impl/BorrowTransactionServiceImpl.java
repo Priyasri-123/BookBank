@@ -8,6 +8,7 @@ import com.bookbank.entity.BookCopy;
 import com.bookbank.entity.BookCopy.CopyStatus;
 import com.bookbank.entity.BorrowTransaction;
 import com.bookbank.entity.BorrowTransaction.BorrowStatus;
+import com.bookbank.entity.NotificationType;
 import com.bookbank.entity.Reservation;
 import com.bookbank.entity.Reservation.ReservationStatus;
 import com.bookbank.entity.Role;
@@ -168,7 +169,11 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
 
         BorrowTransaction saved = borrowTransactionRepository.save(transaction);
         notificationService.notify(transaction.getUser(),
-                "Your request for '" + book.getTitle() + "' was approved. Due date: " + transaction.getDueDate());
+                "Your request for '" + book.getTitle() + "' was approved. Due date: " + transaction.getDueDate(),
+                NotificationType.BORROW_REQUEST_APPROVED);
+        notificationService.notify(transaction.getUser(),
+                "You have been issued '" + book.getTitle() + "'. Please return it by " + transaction.getDueDate() + ".",
+                NotificationType.BOOK_ISSUED);
 
         return borrowTransactionMapper.toResponse(saved);
     }
@@ -186,7 +191,8 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
         BorrowTransaction saved = borrowTransactionRepository.save(transaction);
 
         notificationService.notify(transaction.getUser(),
-                "Your request for '" + transaction.getBookCopy().getBook().getTitle() + "' was rejected.");
+                "Your request for '" + transaction.getBookCopy().getBook().getTitle() + "' was rejected.",
+                NotificationType.BORROW_REQUEST_REJECTED);
 
         return borrowTransactionMapper.toResponse(saved);
     }
@@ -248,7 +254,14 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
                 "You have returned '" + book.getTitle() + "'. " +
                 (finalFine.compareTo(BigDecimal.ZERO) > 0
                         ? "Fine amount: ₹" + finalFine
-                        : "No fine."));
+                        : "No fine."),
+                NotificationType.BOOK_RETURNED);
+
+        if (finalFine.compareTo(BigDecimal.ZERO) > 0) {
+            notificationService.notify(user,
+                    "A fine of ₹" + finalFine + " has been applied for '" + book.getTitle() + "'.",
+                    NotificationType.FINE_CREATED);
+        }
 
         return borrowTransactionMapper.toResponse(
                 saved,
@@ -258,10 +271,22 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
     }
 
     @Override
+    public List<BorrowTransactionResponse> getFiltered(String keyword, List<BorrowStatus> statuses,
+                                                       Boolean finePaid, LocalDateTime requestDateFrom,
+                                                       LocalDateTime requestDateTo) {
+        BigDecimal finePerDay = settingsService.getFinePerDay();
+        return borrowTransactionRepository
+                .findFiltered(keyword, statuses, finePaid, requestDateFrom, requestDateTo)
+                .stream()
+                .map(t -> enrichRequestContext(t, finePerDay))
+                .toList();
+    }
+
+    @Override
     public List<BorrowTransactionResponse> getAll() {
         BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository.findAllWithDetails().stream()
-                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .map(t -> enrichRequestContext(t, finePerDay))
                 .toList();
     }
 
@@ -269,7 +294,7 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
     public List<BorrowTransactionResponse> getPending() {
         BigDecimal finePerDay = settingsService.getFinePerDay();
         return borrowTransactionRepository.findByStatusWithDetails(BorrowStatus.REQUESTED).stream()
-                .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
+                .map(t -> enrichRequestContext(t, finePerDay))
                 .toList();
     }
 
@@ -279,6 +304,28 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
         return borrowTransactionRepository.findByUserWithDetailsOrderByRequestDateDesc(user).stream()
                 .map(t -> borrowTransactionMapper.toResponse(t, finePerDay, null, null))
                 .toList();
+    }
+
+    private BorrowTransactionResponse enrichRequestContext(BorrowTransaction t, BigDecimal finePerDay) {
+        User student = t.getUser();
+        Book book = t.getBookCopy().getBook();
+
+        Integer availableCopies = book.getAvailableCopies();
+        long currentlyBorrowed = borrowTransactionRepository.countByUserAndStatusIn(
+                student, List.of(BorrowStatus.ISSUED, BorrowStatus.OVERDUE));
+        long overdueCount = borrowTransactionRepository.countByUserAndStatusIn(
+                student, List.of(BorrowStatus.OVERDUE));
+        BigDecimal unpaidFines = borrowTransactionRepository.sumUnpaidFines(student);
+        if (unpaidFines == null) unpaidFines = BigDecimal.ZERO;
+
+        BorrowTransactionResponse base = borrowTransactionMapper.toResponse(t, finePerDay, null, null);
+        base.setBookAvailableCopies(availableCopies);
+        base.setStudentCurrentlyBorrowedCount(currentlyBorrowed);
+        base.setStudentOverdueCount(overdueCount);
+        base.setStudentUnpaidFines(unpaidFines);
+        base.setStudentHasOverdue(overdueCount > 0);
+        base.setStudentHasUnpaidFines(unpaidFines.compareTo(BigDecimal.ZERO) > 0);
+        return base;
     }
 
     @Override
@@ -465,6 +512,9 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
         for (BorrowTransaction t : overdue) {
             if (t.getStatus() == BorrowStatus.ISSUED) {
                 t.setStatus(BorrowStatus.OVERDUE);
+                notificationService.notify(t.getUser(),
+                        "⚠ '" + t.getBookCopy().getBook().getTitle() + "' is now overdue. Please return it soon.",
+                        NotificationType.BOOK_OVERDUE);
             }
         }
         borrowTransactionRepository.saveAll(overdue);
@@ -525,7 +575,11 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
 
         BorrowTransaction saved = borrowTransactionRepository.save(transaction);
         notificationService.notify(student,
-                "Your request for '" + book.getTitle() + "' was auto-approved. Due date: " + transaction.getDueDate());
+                "Your request for '" + book.getTitle() + "' was auto-approved. Due date: " + transaction.getDueDate(),
+                NotificationType.BORROW_REQUEST_APPROVED);
+        notificationService.notify(student,
+                "You have been issued '" + book.getTitle() + "'. Please return it by " + transaction.getDueDate() + ".",
+                NotificationType.BOOK_ISSUED);
 
         return borrowTransactionMapper.toResponse(saved);
     }
@@ -564,6 +618,10 @@ public class BorrowTransactionServiceImpl implements BorrowTransactionService {
         transaction.setFinePaymentDate(LocalDateTime.now());
 
         BorrowTransaction saved = borrowTransactionRepository.save(transaction);
+        notificationService.notify(student,
+                "Your fine of ₹" + currentFine + " for '" + transaction.getBookCopy().getBook().getTitle() + "' has been paid.",
+                NotificationType.FINE_PAID);
+
         return borrowTransactionMapper.toResponse(saved);
     }
 

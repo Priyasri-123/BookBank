@@ -18,4 +18,6 @@ public class ReservationResponse {
     private LocalDateTime reservationDate;
     private LocalDateTime expiryDate;
     private String status;
+    private Integer queuePosition;
+    private Integer availableCopies;
 }

@@ -41,9 +41,12 @@ public class DashboardServiceImpl implements DashboardService {
                 .availableBookCopies(bookRepository.sumAvailableCopies())
                 .issuedBooks(borrowTransactionRepository.countByStatus(BorrowStatus.ISSUED))
                 .overdueBooks(borrowTransactionRepository.countByStatus(BorrowStatus.OVERDUE))
+                .studentsWithOverdueBooks(borrowTransactionRepository.countDistinctStudentsWithOverdueBooks())
                 .pendingRequests(borrowTransactionRepository.countByStatus(BorrowStatus.REQUESTED))
                 .activeReservations(reservationRepository.countByStatus(ReservationStatus.ACTIVE))
                 .totalUnpaidFines(nullSafe(borrowTransactionRepository.sumUnpaidFines()))
+                .studentsWithUnpaidFines(borrowTransactionRepository.countDistinctUsersWithUnpaidFines())
+                .totalPaidFines(nullSafe(borrowTransactionRepository.sumPaidFines()))
                 .build();
     }
 

@@ -1,8 +1,10 @@
 package com.bookbank.service;
 
 import com.bookbank.dto.response.BorrowTransactionResponse;
+import com.bookbank.entity.BorrowTransaction.BorrowStatus;
 import com.bookbank.entity.User;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface BorrowTransactionService {
@@ -26,6 +28,10 @@ public interface BorrowTransactionService {
     void refreshOverdueStatuses(); // scheduled job hook
     BorrowTransactionResponse autoApprovePendingRequest(Long transactionId);
     BorrowTransactionResponse payFine(User student, Long transactionId, String txnId);
+
+    List<BorrowTransactionResponse> getFiltered(String keyword, List<BorrowStatus> statuses,
+                                                 Boolean finePaid, LocalDateTime requestDateFrom,
+                                                 LocalDateTime requestDateTo);
 
     com.bookbank.dto.response.StudentLibrarySummaryResponse getStudentLibrarySummary(Long studentId);
 }

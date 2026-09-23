@@ -2,6 +2,7 @@ package com.bookbank.service.impl;
 
 import com.bookbank.dto.response.ReservationResponse;
 import com.bookbank.entity.Book;
+import com.bookbank.entity.NotificationType;
 import com.bookbank.entity.Reservation;
 import com.bookbank.entity.Reservation.ReservationStatus;
 import com.bookbank.entity.User;
@@ -82,12 +83,24 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     public List<ReservationResponse> getMyReservations(User user) {
         return reservationRepository.findByUserOrderByReservationDateDesc(user).stream()
-                .map(reservationMapper::toResponse).toList();
+                .map(this::enrich).toList();
     }
 
     @Override
     public List<ReservationResponse> getAll() {
-        return reservationRepository.findAll().stream().map(reservationMapper::toResponse).toList();
+        return reservationRepository.findAll().stream()
+                .map(this::enrich).toList();
+    }
+
+    private ReservationResponse enrich(Reservation r) {
+        Integer queuePosition = null;
+        Integer availableCopies = null;
+        if (r.getStatus() == ReservationStatus.ACTIVE) {
+            long pos = reservationRepository.countActiveBefore(r.getBook(), r.getReservationDate()) + 1;
+            queuePosition = (int) pos;
+            availableCopies = r.getBook().getAvailableCopies();
+        }
+        return reservationMapper.toResponse(r, queuePosition, availableCopies);
     }
 
     @Override
@@ -120,7 +133,8 @@ public class ReservationServiceImpl implements ReservationService {
 
             notificationService.notify(reservation.getUser(),
                     "Good news! '" + book.getTitle() + "' is now available for you to collect. " +
-                    "Please borrow it before " + reservation.getExpiryDate().toLocalDate());
+                    "Please borrow it before " + reservation.getExpiryDate().toLocalDate(),
+                    NotificationType.RESERVATION_FULFILLED);
         }
     }
 

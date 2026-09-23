@@ -26,6 +26,11 @@ public class Notification {
     @Column(nullable = false, length = 255)
     private String message;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40)
+    @Builder.Default
+    private NotificationType type = NotificationType.SYSTEM;
+
     @Builder.Default
     @Column(name = "is_read", nullable = false)
     private Boolean read = false;

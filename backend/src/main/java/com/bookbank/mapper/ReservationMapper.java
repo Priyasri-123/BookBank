@@ -7,6 +7,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class ReservationMapper {
     public ReservationResponse toResponse(Reservation r) {
+        return toResponse(r, null, null);
+    }
+
+    public ReservationResponse toResponse(Reservation r, Integer queuePosition, Integer availableCopies) {
         return ReservationResponse.builder()
                 .id(r.getId())
                 .userId(r.getUser().getId())
@@ -16,6 +20,8 @@ public class ReservationMapper {
                 .reservationDate(r.getReservationDate())
                 .expiryDate(r.getExpiryDate())
                 .status(r.getStatus().name())
+                .queuePosition(queuePosition)
+                .availableCopies(availableCopies)
                 .build();
     }
 }

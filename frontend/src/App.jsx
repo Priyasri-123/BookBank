@@ -36,6 +36,7 @@ import CategoryManagement from './pages/admin/CategoryManagement';
 import AuthorManagement from './pages/admin/AuthorManagement';
 import PublisherManagement from './pages/admin/PublisherManagement';
 import SystemSettings from './pages/admin/SystemSettings';
+import AdminFineManagement from './pages/admin/AdminFineManagement';
 
 function withLayout(element) {
   return <Layout>{element}</Layout>;
@@ -95,6 +96,8 @@ export default function App() {
         <ProtectedRoute roles={['ADMIN']}>{withLayout(<PublisherManagement />)}</ProtectedRoute>} />
       <Route path="/admin/settings" element={
         <ProtectedRoute roles={['ADMIN']}>{withLayout(<SystemSettings />)}</ProtectedRoute>} />
+      <Route path="/admin/fines" element={
+        <ProtectedRoute roles={['ADMIN']}>{withLayout(<AdminFineManagement />)}</ProtectedRoute>} />
       <Route path="/admin/requests" element={
         <ProtectedRoute roles={['ADMIN']}>{withLayout(<BorrowRequests />)}</ProtectedRoute>} />
 

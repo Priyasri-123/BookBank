@@ -7,6 +7,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class BookMapper {
     public BookResponse toResponse(Book b) {
+        return toResponse(b, 0, 0, 0, "AVAILABLE");
+    }
+
+    public BookResponse toResponse(Book b, int issuedCopies, int damagedCopies, int lostCopies, String bookStatus) {
         return BookResponse.builder()
                 .id(b.getId())
                 .isbn(b.getIsbn())
@@ -23,6 +27,10 @@ public class BookMapper {
                 .publicationYear(b.getPublicationYear())
                 .totalCopies(b.getTotalCopies())
                 .availableCopies(b.getAvailableCopies())
+                .issuedCopies(issuedCopies)
+                .damagedCopies(damagedCopies)
+                .lostCopies(lostCopies)
+                .bookStatus(bookStatus)
                 .imageUrl(b.getImageUrl())
                 .build();
     }

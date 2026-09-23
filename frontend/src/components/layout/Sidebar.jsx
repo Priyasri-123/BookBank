@@ -26,6 +26,7 @@ const LINKS = {
     { to: '/admin/authors', label: 'Authors' },
     { to: '/admin/publishers', label: 'Publishers' },
     { to: '/admin/settings', label: 'System Settings' },
+    { to: '/admin/fines', label: 'Fine Management' },
     { to: '/admin/requests', label: 'Pending Requests' },
   ],
 };

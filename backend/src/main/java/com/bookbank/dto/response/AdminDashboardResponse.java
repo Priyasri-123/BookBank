@@ -16,7 +16,10 @@ public class AdminDashboardResponse {
     private long availableBookCopies;
     private long issuedBooks;
     private long overdueBooks;
+    private long studentsWithOverdueBooks;
     private long pendingRequests;
     private long activeReservations;
     private BigDecimal totalUnpaidFines;
+    private long studentsWithUnpaidFines;
+    private BigDecimal totalPaidFines;
 }
